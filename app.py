@@ -67,13 +67,19 @@ if st.session_state.start_time:
 
         # --- Fallback método contorno quadrado ---
         if roi is None:
+            st.subheader("🔍 Pré-processamento com contornos (fallback)")
+
+            gray_preview = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+            st.image(gray_preview, caption="Imagem em escala de cinza")
+
             # Reduz ruído e aplica binarização
             blur = cv2.medianBlur(gray, 3)
             thresh = cv2.adaptiveThreshold(
                 blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                 cv2.THRESH_BINARY_INV, 15, 4
             )
-            st.image(thresh, caption="Imagem binarizada", channels="GRAY")
+            thresh_preview = cv2.cvtColor(thresh, cv2.COLOR_GRAY2RGB)
+            st.image(thresh_preview, caption="Imagem após blur + binarização")
 
             contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -88,26 +94,15 @@ if st.session_state.start_time:
             if candidatos:
                 c, area, x, y, w, h = max(candidatos, key=lambda item: item[1])
                 roi = gray[y:y+h, x:x+w]
-                st.image(roi, caption="Área detectada por contorno quadrado (ROI)", channels="GRAY")
+
+                roi_rgb = cv2.cvtColor(roi, cv2.COLOR_GRAY2RGB)
+                st.image(roi_rgb, caption="🟩 ROI selecionada por contorno quadrado")
             else:
                 roi = gray
+                fallback_rgb = cv2.cvtColor(roi, cv2.COLOR_GRAY2RGB)
+                st.image(fallback_rgb, caption="⚠️ ROI = imagem inteira (nenhum quadrado encontrado)")
                 st.warning("Não foi detectada área quadrada. Usando imagem inteira para OCR.")
 
-        # OCR na região selecionada
-        custom_config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789'
-        numero = pytesseract.image_to_string(roi, config=custom_config).strip()
-        st.text(f"OCR detectado: {numero if numero else '[vazio]'}")
-
-        if numero:
-            st.session_state.registros.append({
-                'Número do Atleta': numero,
-                'Hora de Chegada': chegada.strftime('%H:%M:%S'),
-                'Tempo de Prova': str(tempo).split(".")[0]
-            })
-
-            st.success(f"✅ Atleta **{numero}** registrado! Tempo: **{str(tempo).split('.')[0]}**")
-        else:
-            st.error("⚠️ Não foi possível identificar o número do atleta. Tente outra imagem ou maior contraste.")
 
     # Mostrar tabela de resultados
     if st.session_state.registros:
