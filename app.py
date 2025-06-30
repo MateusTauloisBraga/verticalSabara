@@ -4,6 +4,8 @@ from PIL import Image
 import pytesseract
 import pandas as pd
 import io
+import numpy as np
+import cv2
 
 st.set_page_config(page_title="Cronometragem Vertical", layout="centered")
 st.title("📸 Cronometragem de Prova Vertical")
@@ -29,20 +31,38 @@ if st.session_state.start_time:
         chegada = datetime.now()
         tempo = chegada - st.session_state.start_time
 
+        # Abre imagem e exibe
         image = Image.open(img_file)
+        st.image(image, caption="Imagem original")
 
-        # OCR para extrair número do atleta
-        numero = pytesseract.image_to_string(image, config='--psm 6 digits')
-        numero = numero.strip()
+        # Pré-processamento com OpenCV
+        img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+        thresh = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 11, 2
+        )
 
-        # Salva o registro
-        st.session_state.registros.append({
-            'Número do Atleta': numero,
-            'Hora de Chegada': chegada.strftime('%H:%M:%S'),
-            'Tempo de Prova': str(tempo).split(".")[0]  # remove milissegundos
-        })
+        # Mostra imagem binarizada
+        st.image(thresh, caption="Imagem processada (binarizada)", channels="GRAY")
 
-        st.success(f"✅ Atleta **{numero}** registrado! Tempo: **{str(tempo).split('.')[0]}**")
+        # OCR com configuração customizada
+        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
+        numero = pytesseract.image_to_string(thresh, config=custom_config).strip()
+
+        st.text(f"OCR detectado: {numero if numero else '[vazio]'}")
+
+        # Salva o registro se detectou número
+        if numero:
+            st.session_state.registros.append({
+                'Número do Atleta': numero,
+                'Hora de Chegada': chegada.strftime('%H:%M:%S'),
+                'Tempo de Prova': str(tempo).split(".")[0]  # remove milissegundos
+            })
+
+            st.success(f"✅ Atleta **{numero}** registrado! Tempo: **{str(tempo).split('.')[0]}**")
+        else:
+            st.error("⚠️ Não foi possível identificar o número do atleta. Tente novamente com mais contraste ou melhor enquadramento.")
 
     # Mostrar tabela de resultados
     if st.session_state.registros:
