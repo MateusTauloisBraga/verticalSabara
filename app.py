@@ -3,7 +3,6 @@ from datetime import datetime
 from PIL import Image
 import pytesseract
 import pandas as pd
-import io
 import numpy as np
 import cv2
 
@@ -47,16 +46,26 @@ if st.session_state.start_time:
 
         st.image(thresh, caption="Imagem binarizada", channels="GRAY")
 
-        # Detecção de contornos (maior área para tentar extrair o número)
+        # Detecta contornos
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)
 
-        if contours:
-            x, y, w, h = cv2.boundingRect(contours[0])
+        # Filtra contornos aproximados a quadrados (razão largura/altura ~ 1)
+        candidatos = []
+        for c in contours:
+            x, y, w, h = cv2.boundingRect(c)
+            ratio = w / float(h)
+            area = w * h
+            if 0.7 <= ratio <= 1.3 and area > 100:  # area mínima para evitar ruído
+                candidatos.append((c, area, x, y, w, h))
+
+        if candidatos:
+            # Pega o maior candidato
+            c, area, x, y, w, h = max(candidatos, key=lambda item: item[1])
             roi = gray[y:y+h, x:x+w]
-            st.image(roi, caption="Área detectada com maior contorno (ROI)", channels="GRAY")
+            st.image(roi, caption="Área detectada com contorno aproximadamente quadrado (ROI)", channels="GRAY")
         else:
-            roi = gray  # fallback
+            roi = gray
+            st.warning("Não foi detectada área quadrada. Usando imagem inteira para OCR.")
 
         # OCR com configuração customizada
         custom_config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789'
