@@ -24,45 +24,55 @@ if st.button("🟢 Iniciar Prova"):
 if st.session_state.start_time:
     st.markdown(f"**⏱️ Largada:** {st.session_state.start_time.strftime('%H:%M:%S')}")
 
-    # Captura de imagem do atleta
-    img_file = st.camera_input("📷 Tire uma foto do atleta na chegada")
+    st.markdown("### 📸 Captura ou upload de imagem do atleta")
+    img_file = st.camera_input("📷 Tire uma foto do atleta") or st.file_uploader("⬆️ Ou envie uma imagem", type=["png", "jpg", "jpeg"])
 
     if img_file is not None:
         chegada = datetime.now()
         tempo = chegada - st.session_state.start_time
 
-        # Abre imagem e exibe
-        image = Image.open(img_file)
+        image = Image.open(img_file).convert("RGB")
         st.image(image, caption="Imagem original")
 
         # Pré-processamento com OpenCV
         img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+
+        # Reduz ruído e aumenta contraste
+        blur = cv2.medianBlur(gray, 3)
         thresh = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 11, 2
+            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 15, 4
         )
 
-        # Mostra imagem binarizada
-        st.image(thresh, caption="Imagem processada (binarizada)", channels="GRAY")
+        st.image(thresh, caption="Imagem binarizada", channels="GRAY")
+
+        # Detecção de contornos (maior área para tentar extrair o número)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        if contours:
+            x, y, w, h = cv2.boundingRect(contours[0])
+            roi = gray[y:y+h, x:x+w]
+            st.image(roi, caption="Área detectada com maior contorno (ROI)", channels="GRAY")
+        else:
+            roi = gray  # fallback
 
         # OCR com configuração customizada
-        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
-        numero = pytesseract.image_to_string(thresh, config=custom_config).strip()
-
+        custom_config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789'
+        numero = pytesseract.image_to_string(roi, config=custom_config).strip()
         st.text(f"OCR detectado: {numero if numero else '[vazio]'}")
 
-        # Salva o registro se detectou número
         if numero:
             st.session_state.registros.append({
                 'Número do Atleta': numero,
                 'Hora de Chegada': chegada.strftime('%H:%M:%S'),
-                'Tempo de Prova': str(tempo).split(".")[0]  # remove milissegundos
+                'Tempo de Prova': str(tempo).split(".")[0]
             })
 
             st.success(f"✅ Atleta **{numero}** registrado! Tempo: **{str(tempo).split('.')[0]}**")
         else:
-            st.error("⚠️ Não foi possível identificar o número do atleta. Tente novamente com mais contraste ou melhor enquadramento.")
+            st.error("⚠️ Não foi possível identificar o número do atleta. Tente outra imagem ou maior contraste.")
 
     # Mostrar tabela de resultados
     if st.session_state.registros:
